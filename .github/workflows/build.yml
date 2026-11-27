@@ -1,0 +1,49 @@
+# Compile automatiquement MP3 Compiler pour Windows (.exe) et macOS (.app)
+# à chaque envoi sur main, à chaque tag « v* », ou manuellement
+# (onglet Actions › build › Run workflow).
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: MP3-Compiler-Windows
+          - os: macos-latest            # Apple Silicon (arm64)
+            artifact: MP3-Compiler-macOS-arm64
+          # Pour un build Intel, ajoutez un runner macOS x86_64 disponible
+          # sur votre compte (ex. « macos-15-intel »).
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: "1"   # console Windows : évite les erreurs d'encodage (✔, →…)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dépendances
+        run: pip install -r requirements-build.txt
+      - name: Tests
+        run: python -m pytest -q
+      - name: Compilation
+        run: python build.py
+      - name: Vérification FFmpeg intégré (macOS)
+        if: runner.os == 'macOS'
+        run: '"dist/MP3 Compiler.app/Contents/MacOS/MP3 Compiler" --check-ffmpeg'
+      - name: Archive macOS
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent "dist/MP3 Compiler.app" "dist/MP3-Compiler-macOS.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/*.exe
+            dist/*.zip
